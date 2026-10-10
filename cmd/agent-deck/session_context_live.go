@@ -82,31 +82,41 @@ func readLiveContext(ctx context.Context, inst *session.Instance, peers []*sessi
 	if ctx.Err() != nil {
 		return &contextLiveJSON{Supported: true, Reason: timedOut}
 	}
+	// A remote session's conversation is on the remote host: there is no local
+	// reading to take, and saying "nothing loaded" would be false.
+	if !inst.TranscriptIsResolvableLocally() {
+		return &contextLiveJSON{Supported: false, Reason: "this session's transcript is on a remote host, so no live reading is taken here"}
+	}
+	// Everything that touches the filesystem — resolving the path (a stat) and
+	// the scan — runs inside the --timeout, so a stalled mount cannot hang the
+	// command. The channel is buffered so a late result never blocks.
+	done := make(chan *contextLiveJSON, 1)
+	go func() { done <- readLiveTranscript(inst, peers) }()
+	select {
+	case <-ctx.Done():
+		return &contextLiveJSON{Supported: true, Reason: timedOut}
+	case r := <-done:
+		return r
+	}
+}
+
+// readLiveTranscript resolves and parses the transcript; the timed half of
+// [readLiveContext].
+func readLiveTranscript(inst *session.Instance, peers []*session.Instance) *contextLiveJSON {
 	if inst.ClaudeSessionIDCollidesWith(peers) {
 		return &contextLiveJSON{Supported: true, Reason: "this session's Claude session id is shared with another live session, so its transcript is not read"}
 	}
 	path := session.LiveTranscriptPath(inst, peers)
 	if strings.TrimSpace(path) == "" {
-		return &contextLiveJSON{Supported: true, Reason: "no transcript yet, so nothing has been loaded into the context"}
+		// Absent or unreadable look the same from here, and neither proves the
+		// context is empty: report the reading as unavailable, not as zero.
+		return &contextLiveJSON{Supported: true, Reason: "no readable transcript was found for this session (not written yet, or not accessible), so the live use is unknown"}
 	}
-	type parsed struct {
-		a   *session.SessionAnalytics
-		err error
+	a, err := session.ParseSessionJSONL(path)
+	if err != nil {
+		return &contextLiveJSON{Supported: true, Reason: "reading the transcript: " + err.Error()}
 	}
-	done := make(chan parsed, 1) // buffered: a timed-out parse must not block forever on send
-	go func() {
-		a, err := session.ParseSessionJSONL(path)
-		done <- parsed{a, err}
-	}()
-	select {
-	case <-ctx.Done():
-		return &contextLiveJSON{Supported: true, Reason: timedOut}
-	case r := <-done:
-		if r.err != nil {
-			return &contextLiveJSON{Supported: true, Reason: "reading the transcript: " + r.err.Error()}
-		}
-		return liveContextFromAnalytics(r.a)
-	}
+	return liveContextFromAnalytics(a)
 }
 
 // liveContextFromAnalytics turns parsed analytics into the live reading. It is

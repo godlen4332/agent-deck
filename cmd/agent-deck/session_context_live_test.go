@@ -147,3 +147,17 @@ func TestLiveContextAllUsageUnreadableIsNotAnUnusedSession(t *testing.T) {
 		t.Fatalf("an unreadable transcript must say so, not claim no turn yet: %+v", got)
 	}
 }
+
+// A remote session's conversation is not here: unsupported, never "nothing
+// loaded"; and a local session with no readable transcript is unknown, not 0.
+func TestReadLiveContextRemoteAndMissingAreUnknownNotEmpty(t *testing.T) {
+	remote := readLiveContext(context.Background(), &session.Instance{ID: "r", Tool: "claude", ClaudeSessionID: "abc", SSHHost: "build-box"}, nil)
+	if remote.Supported || remote.Tokens != nil || !strings.Contains(remote.Reason, "remote host") {
+		t.Fatalf("a remote session must be unsupported with the remote reason, got %+v", remote)
+	}
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	missing := readLiveContext(context.Background(), &session.Instance{ID: "m", Tool: "claude", ClaudeSessionID: "no-such-session", ProjectPath: t.TempDir()}, nil)
+	if missing.Tokens != nil || !strings.Contains(missing.Reason, "unknown") {
+		t.Fatalf("a missing transcript must be unknown, not an empty context, got %+v", missing)
+	}
+}
