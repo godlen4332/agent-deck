@@ -34,6 +34,10 @@ type contextJSON struct {
 	Totals contextTotalsJSON `json:"totals"`
 	// Report is the full inspection result.
 	Report *ctxinspect.Report `json:"report"`
+	// Live is how full the context is NOW — the TUI context bar's reading —
+	// where everything above measures the fixed startup overhead. Additive, so
+	// the schema version is unchanged.
+	Live *contextLiveJSON `json:"live,omitempty"`
 }
 
 // contextSessionJSON identifies the inspected session.
@@ -137,6 +141,7 @@ func buildContextJSON(v contextView) contextJSON {
 			},
 		},
 		Report: rep,
+		Live:   v.Live,
 	}
 	doc.Session.ID = rep.SessionID
 

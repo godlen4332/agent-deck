@@ -37,6 +37,9 @@ type contextView struct {
 	// there are and where to read them. A screen whose disclaimers outweigh its
 	// figures three to one does not read as careful; it reads as unfinished.
 	Verbose bool
+	// Live is how full the context is now (see [contextLiveJSON]). Nil when no
+	// reading was taken; then the document has no "live" key at all.
+	Live *contextLiveJSON
 }
 
 // contextScopeLine is the sentence that has to be on the first screen.
@@ -234,8 +237,8 @@ func renderContextQuiet(v contextView) string {
 	// breakdown headline: most levers are an edit. And a count with no figure
 	// beside it does not answer the question a one-line mode is asked.
 	n, tokens, complete := rep.ActionableTotal()
-	return fmt.Sprintf("%s; %d item%s you can act on, worth %s (--tab breakdown to see them)",
-		head, n, plural(n), formatTotalTokens(tokens, complete))
+	return fmt.Sprintf("%s; %d item%s you can act on, worth %s (--tab breakdown to see them)%s",
+		head, n, plural(n), formatTotalTokens(tokens, complete), liveContextQuiet(v.Live))
 }
 
 // categorySummary is the right-hand cell of an overview row: the title plus the

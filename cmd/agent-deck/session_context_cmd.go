@@ -239,6 +239,7 @@ func handleSessionContext(profile string, args []string) {
 		Report:   rep,
 		Warnings: warnings,
 		Verbose:  *verbose,
+		Live:     readLiveContext(inst, instances),
 	}
 
 	// A command whose entire product is a report must not answer -q with zero
