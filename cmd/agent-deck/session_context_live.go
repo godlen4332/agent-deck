@@ -45,8 +45,8 @@ type contextLiveJSON struct {
 	OverLimit bool `json:"over_limit,omitempty"`
 	// PossiblyStale says some transcript lines could not be read (ParseGaps of
 	// them), and a skipped line can be the newest usage record — so Tokens may
-	// be an older turn's, and an automation deciding on a threshold should
-	// treat the figure as a lower bound. The TUI panel labels the same case.
+	// be an older turn's, higher or lower than the real current use. The TUI
+	// panel labels the same case.
 	PossiblyStale bool `json:"possibly_stale,omitempty"`
 	ParseGaps     int  `json:"parse_gaps,omitempty"`
 	// Source names where the reading came from.
@@ -114,8 +114,16 @@ func readLiveContext(ctx context.Context, inst *session.Instance, peers []*sessi
 // a session or a transcript on disk.
 func liveContextFromAnalytics(a *session.SessionAnalytics) *contextLiveJSON {
 	doc := &contextLiveJSON{Supported: true, Source: liveContextSource}
+	if a.HasParseGaps() {
+		doc.PossiblyStale = true
+		doc.ParseGaps = a.ParseGaps
+	}
 	if a == nil || a.PeakContextTokens == 0 {
 		doc.Reason = "no model turn has carried a prompt yet"
+		if doc.PossiblyStale {
+			// Unreadable, not unused: every usage record may be among the gaps.
+			doc.Reason = fmt.Sprintf("no usage record could be read, and %d transcript line%s could not be parsed, so the context use is unknown", a.ParseGaps, plural(a.ParseGaps))
+		}
 		return doc
 	}
 	usage := a.ContextUsage()
@@ -130,10 +138,10 @@ func liveContextFromAnalytics(a *session.SessionAnalytics) *contextLiveJSON {
 		pct := usage.Percent
 		doc.WindowPercent = &pct
 	}
-	if a.HasParseGaps() {
-		doc.PossiblyStale = true
-		doc.ParseGaps = a.ParseGaps
-		doc.Reason = fmt.Sprintf("%d transcript line%s could not be read; the newest usage record may be among them, so treat this reading as a lower bound", a.ParseGaps, plural(a.ParseGaps))
+	if doc.PossiblyStale {
+		// Not a bound in either direction: a skipped record before a compaction
+		// would make this low, one after it would make this high.
+		doc.Reason = fmt.Sprintf("%d transcript line%s could not be read; the newest usage record may be among them, so the current use may be higher or lower than this reading", a.ParseGaps, plural(a.ParseGaps))
 	}
 	return doc
 }

@@ -118,7 +118,7 @@ func TestLiveContextWithParseGapsIsMarkedPossiblyStale(t *testing.T) {
 	t.Setenv(ctxtext.WindowEnvVar, "")
 	a := &session.SessionAnalytics{Model: "claude-opus-5", CurrentContextTokens: 100000, PeakContextTokens: 100000, ParseGaps: 2}
 	got := liveContextFromAnalytics(a)
-	if !got.PossiblyStale || got.ParseGaps != 2 || !strings.Contains(got.Reason, "lower bound") {
+	if !got.PossiblyStale || got.ParseGaps != 2 || !strings.Contains(got.Reason, "higher or lower") {
 		t.Fatalf("a reading with parse gaps must be marked possibly stale with a reason, got %+v", got)
 	}
 	if !strings.Contains(liveContextQuiet(got), "possibly stale") {
@@ -137,5 +137,13 @@ func TestReadLiveContextHonoursTheTimeout(t *testing.T) {
 	got := readLiveContext(ctx, inst, nil)
 	if got == nil || got.Tokens != nil || !strings.Contains(got.Reason, "--timeout") {
 		t.Fatalf("an expired context must give the timeout reason and no figure, got %+v", got)
+	}
+}
+
+// Every usage record unreadable is not the same as an unused session.
+func TestLiveContextAllUsageUnreadableIsNotAnUnusedSession(t *testing.T) {
+	got := liveContextFromAnalytics(&session.SessionAnalytics{ParseGaps: 3})
+	if got.Tokens != nil || !got.PossiblyStale || got.ParseGaps != 3 || !strings.Contains(got.Reason, "unknown") {
+		t.Fatalf("an unreadable transcript must say so, not claim no turn yet: %+v", got)
 	}
 }
