@@ -239,7 +239,11 @@ func handleSessionContext(profile string, args []string) {
 		Report:   rep,
 		Warnings: warnings,
 		Verbose:  *verbose,
-		Live:     readLiveContext(inst, instances),
+	}
+	// The live reading is a full transcript scan, so it is taken only for the
+	// two outputs that print it, and inside the same --timeout as inspection.
+	if (*jsonOutput || quietMode) && strings.TrimSpace(*item) == "" && !*verifyLive {
+		view.Live = readLiveContext(ctx, inst, instances)
 	}
 
 	// A command whose entire product is a report must not answer -q with zero

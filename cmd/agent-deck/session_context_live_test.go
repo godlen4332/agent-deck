@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -102,11 +103,39 @@ func TestBuildContextJSONOmitsLiveWhenNoReadingWasTaken(t *testing.T) {
 // A non-Claude session gets an honest "not supported", not a fake reading.
 func TestReadLiveContextNonClaudeIsUnsupported(t *testing.T) {
 	inst := &session.Instance{ID: "x", Tool: "codex"}
-	got := readLiveContext(inst, nil)
+	got := readLiveContext(context.Background(), inst, nil)
 	if got == nil || got.Supported || got.Reason == "" || got.Tokens != nil {
 		t.Fatalf("a non-Claude session must be unsupported with a reason and no figure, got %+v", got)
 	}
-	if readLiveContext(nil, nil) != nil {
+	if readLiveContext(context.Background(), nil, nil) != nil {
 		t.Fatal("no session, no reading")
+	}
+}
+
+// A skipped transcript line can be the newest usage record, so the reading is
+// qualified as possibly stale — on the wire and on the one-line mode.
+func TestLiveContextWithParseGapsIsMarkedPossiblyStale(t *testing.T) {
+	t.Setenv(ctxtext.WindowEnvVar, "")
+	a := &session.SessionAnalytics{Model: "claude-opus-5", CurrentContextTokens: 100000, PeakContextTokens: 100000, ParseGaps: 2}
+	got := liveContextFromAnalytics(a)
+	if !got.PossiblyStale || got.ParseGaps != 2 || !strings.Contains(got.Reason, "lower bound") {
+		t.Fatalf("a reading with parse gaps must be marked possibly stale with a reason, got %+v", got)
+	}
+	if !strings.Contains(liveContextQuiet(got), "possibly stale") {
+		t.Fatalf("the one-line mode must qualify a possibly stale reading: %q", liveContextQuiet(got))
+	}
+	if clean := liveContextFromAnalytics(&session.SessionAnalytics{Model: "claude-opus-5", CurrentContextTokens: 1, PeakContextTokens: 1}); clean.PossiblyStale || clean.Reason != "" {
+		t.Fatalf("a clean parse must not be qualified, got %+v", clean)
+	}
+}
+
+// An expired --timeout yields a reason, never a hang or a figure.
+func TestReadLiveContextHonoursTheTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	inst := &session.Instance{ID: "x", Tool: "claude", ClaudeSessionID: "no-such-session"}
+	got := readLiveContext(ctx, inst, nil)
+	if got == nil || got.Tokens != nil || !strings.Contains(got.Reason, "--timeout") {
+		t.Fatalf("an expired context must give the timeout reason and no figure, got %+v", got)
 	}
 }
